@@ -98,4 +98,4 @@ Claude 3.5 Sonnet
 
 - Built with Rust and Actix-web
 - Inspired by the classic Snake game
-```
+
