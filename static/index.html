@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Snake Game</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+        #game-container {
+            display: flex;
+            gap: 20px;
+        }
+        #leaderboard {
+            min-width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div>
+            <canvas id="gameCanvas" width="400" height="400"></canvas>
+            <div>
+                <button onclick="startNewGame()">New Game</button>
+                <button onclick="toggleAI()">Toggle AI</button>
+                <span>Score: <span id="score">0</span></span>
+            </div>
+        </div>
+        <div id="leaderboard">
+            <h2>Leaderboard</h2>
+            <div id="leaderboard-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const cellSize = 20;
+        let gameState = null;
+        let aiMode = false;
+        let gameLoop = null;
+        let sessionId = null;
+
+        async function startNewGame() {
+            const response = await fetch('/new-game', { method: 'POST' });
+            const data = await response.json();
+            sessionId = data.session_id;
+            
+            if (gameLoop) {
+                clearInterval(gameLoop);
+            }
+            aiMode = false;
+            startGameLoop();
+            updateLeaderboard();
+        }
+
+        function toggleAI() {
+            aiMode = !aiMode;
+        }
+
+        async function updateGame() {
+            if (!sessionId) return;
+            
+            if (aiMode) {
+                const response = await fetch(`/ai-move/${sessionId}`, { method: 'POST' });
+                gameState = await response.json();
+            } else {
+                const response = await fetch(`/update/${sessionId}`, { method: 'POST' });
+                gameState = await response.json();
+            }
+
+            if (gameState.game_over) {
+                clearInterval(gameLoop);
+                const name = prompt('Game Over! Enter your name for the leaderboard:');
+                if (name) {
+                    await submitScore(name, gameState.score);
+                }
+                updateLeaderboard();
+            }
+
+            document.getElementById('score').textContent = gameState.score;
+            drawGame();
+        }
+
+        async function submitScore(name, score) {
+            await fetch('/submit-score', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ name, score }),
+            });
+        }
+
+        async function updateLeaderboard() {
+            const response = await fetch('/leaderboard');
+            const leaderboard = await response.json();
+            const leaderboardHtml = leaderboard
+                .map((entry, index) => `
+                    <div>${index + 1}. ${entry.name}: ${entry.score}</div>
+                `)
+                .join('');
+            document.getElementById('leaderboard-list').innerHTML = leaderboardHtml;
+        }
+
+        function drawGame() {
+            if (!gameState) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw snake
+            ctx.fillStyle = 'green';
+            gameState.snake.forEach(point => {
+                ctx.fillRect(
+                    point.x * cellSize,
+                    point.y * cellSize,
+                    cellSize - 1,
+                    cellSize - 1
+                );
+            });
+
+            // Draw food
+            ctx.fillStyle = 'red';
+            ctx.fillRect(
+                gameState.food.x * cellSize,
+                gameState.food.y * cellSize,
+                cellSize - 1,
+                cellSize - 1
+            );
+        }
+
+        function startGameLoop() {
+            gameLoop = setInterval(updateGame, 100);
+        }
+
+        document.addEventListener('keydown', async (event) => {
+            if (aiMode || !sessionId) return;
+
+            let direction = null;
+            switch (event.key) {
+                case 'ArrowUp':
+                    direction = 'Up';
+                    break;
+                case 'ArrowDown':
+                    direction = 'Down';
+                    break;
+                case 'ArrowLeft':
+                    direction = 'Left';
+                    break;
+                case 'ArrowRight':
+                    direction = 'Right';
+                    break;
+            }
+
+            if (direction) {
+                await fetch(`/direction/${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(direction),
+                });
+            }
+        });
+
+        startNewGame();
+    </script>
+</body>
+</html> 
